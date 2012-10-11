@@ -1,4 +1,7 @@
 .*.swp
+*.o
+*.so
+bin/*
 ramsch
 what-done
 *.class
