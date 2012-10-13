@@ -38,8 +38,8 @@
 static const char* szPortNames[] = { "Trigger threshold", "Release threshold",
 		"Release delay", "Click level", "Click delay", "Click release",
 		"Triggered input level", "Stand-by input level",
-		"Input trigger release", "Input gain",
-		"Input vs threshold", "Triggered?"
+		"Input trigger release", "Input gain", "Input vs threshold",
+		"Trigger count"
 /* Input, Output
  */
 };
@@ -47,6 +47,9 @@ static const char* szPortNames[] = { "Trigger threshold", "Release threshold",
 static int isPortLogarithmic[] = { 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1 };
 static int isPortInput[] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0 };
 static int defaultOne[] = { 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0 };
+static int isInteger[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+static int hasUpperBound[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+static LADSPA_Data upperBound[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 };
 
 /*
  * current machine state, reset on activation
@@ -214,7 +217,12 @@ void runKickTrigger(LADSPA_Handle Instance, unsigned long SampleCount) {
 		pfInput = psKickTrigger[1 + N_PORTS * channel + N_PORTS - 2];
 		pfOutput = psKickTrigger[1 + N_PORTS * channel + N_PORTS - 1];
 
-		amount = fabsf(*pStandby - *pTriggered) / (4.f* 1024.f * *pTrigRelease);
+		amount = fabsf(*pStandby - *pTriggered)
+				/ (4.f * 1024.f * *pTrigRelease);
+
+		if (amount < 0.000001f)
+			amount = 0.000001f;
+
 		clickFactor = *pClLvl / (*pClRelease * 1024.f);
 
 		triggerThreshold = 0.9f * *pTrigThr;
@@ -249,6 +257,7 @@ void runKickTrigger(LADSPA_Handle Instance, unsigned long SampleCount) {
 					*pClDel = *pClDelay * 64.f;
 					*pClRel = *pClRelease * 512.f;
 					*pInput = *pTriggered;
+					*psKickTrigger[1 + N_PORTS * channel + 11] = (((int)*psKickTrigger[1 + N_PORTS * channel + 11])+1)%101;
 				}
 			} else {
 				if (smp_abs < releaseThreshold) {
@@ -261,7 +270,8 @@ void runKickTrigger(LADSPA_Handle Instance, unsigned long SampleCount) {
 			}
 
 			if (*pClDel >= 0.f) {
-				*pfOutput += *pClLvl * noise[((int) *pClickFrame) % 1024] * 0.4f;
+				*pfOutput += *pClLvl * noise[((int) *pClickFrame) % 1024]
+						* 0.4f;
 
 				*pClDel -= 1.f;
 				*pClickFrame += 1.f;
@@ -277,8 +287,7 @@ void runKickTrigger(LADSPA_Handle Instance, unsigned long SampleCount) {
 		}
 
 		*psKickTrigger[1 + N_PORTS * channel + 9] = *pInput;
-		*psKickTrigger[1 + N_PORTS * channel + 10] = max_smp;
-		*psKickTrigger[1 + N_PORTS * channel + 11] = *pTrig;
+		*psKickTrigger[1 + N_PORTS * channel + 10] = max_smp / triggerThreshold;
 
 	}
 }
@@ -384,11 +393,14 @@ void fillDescriptor(LADSPA_Descriptor *g_psDescriptor, int channels, int id) {
 					(LADSPA_HINT_BOUNDED_BELOW
 							| (isPortLogarithmic[j] ?
 									LADSPA_HINT_LOGARITHMIC : 0)
+							| (isInteger[j] ? LADSPA_HINT_INTEGER : 0)
+							| (hasUpperBound[j] ? LADSPA_HINT_BOUNDED_ABOVE : 0)
 							| (defaultOne[j] ?
 									LADSPA_HINT_DEFAULT_1 :
 									LADSPA_HINT_DEFAULT_0));
 
 			psPortRangeHints[i * N_PORTS + j].LowerBound = 0;
+			psPortRangeHints[i * N_PORTS + j].UpperBound = upperBound[j];
 		}
 		psPortRangeHints[i * N_PORTS + N_PORTS - 2].HintDescriptor = 0;
 		psPortRangeHints[i * N_PORTS + N_PORTS - 1].HintDescriptor = 0;
@@ -418,15 +430,15 @@ void _init() {
 		else if (i < 128)
 			noise[i] = -1.f;
 		else if (i < 150)
-					noise[i] = 1.f;
+			noise[i] = 1.f;
 		else if (i < 182)
-					noise[i] = -1.f;
+			noise[i] = -1.f;
 		else if (i < 198)
-					noise[i] = 1.f;
+			noise[i] = 1.f;
 		else if (i < 214)
-					noise[i] = -1.f;
+			noise[i] = -1.f;
 		else
-			noise[i] = (rand()%1024 - 512)/512.f;
+			noise[i] = (rand() % 1024 - 512) / 512.f;
 	}
 
 	g_psMonoDescriptor = (LADSPA_Descriptor *) malloc(
