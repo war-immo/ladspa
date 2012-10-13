@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 /*****************************************************************************/
 
@@ -28,8 +29,30 @@
 
 /* The port and data numbers for the plugin: */
 
-#define N_PORTS 3
-#define N_DATA 1
+/*
+ * Ports for each channel are:
+ * 
+ *   0: Trigger level
+ *   1: Trigger-delay
+ *   2: Click level
+ *   3: Boost level
+ *   4: Dry level
+ * 
+ *   Input
+ *   Output
+ */
+ 
+
+#define N_PORTS 7
+
+/*
+ * current machine state, reset to zero on activation
+ * 
+ *  0: triggered?
+ *  1: delay remaining
+ */
+ 
+#define N_DATA 2
 
 
 
@@ -51,7 +74,7 @@ instantiateKickTrigger(const LADSPA_Descriptor * Descriptor,
   int i;
   int channels;
   int *pChannels;
-  float* data;
+  LADSPA_Data* data;
   
   channels = 
 	Descriptor->PortCount/N_PORTS;
@@ -68,7 +91,7 @@ instantiateKickTrigger(const LADSPA_Descriptor * Descriptor,
   *pChannels 
     = channels;
     
-  data = malloc(sizeof(float)*channels*N_DATA);
+  data = malloc(sizeof(LADSPA_Data)*channels*N_DATA);
     
   for (i=N_PORTS*channels+1;i<N_PORTS*channels+1+N_DATA*channels;i++) {
 	 instance[i] = data;
@@ -118,6 +141,8 @@ activateKickTrigger(LADSPA_Handle Instance) {
 
 /*****************************************************************************/
 
+LADSPA_Data *noise;
+
 void 
 runKickTrigger(LADSPA_Handle Instance,
 		   unsigned long SampleCount) {
@@ -128,6 +153,16 @@ runKickTrigger(LADSPA_Handle Instance,
   unsigned long lSampleIndex;
   int channel, channelCount;
   int *pChannelCount;
+  
+  LADSPA_Data *pfTriggered;
+  LADSPA_Data *pfRemaining;
+  LADSPA_Data *pfTriggerLevel;
+  LADSPA_Data *pfTriggerDelay;
+  LADSPA_Data *pfClickLevel;
+  LADSPA_Data *pfBoostLevel;
+  LADSPA_Data *pfDryLevel;
+  
+  LADSPA_Data smp;
 
   psKickTrigger = (KickTrigger)Instance;
   
@@ -136,11 +171,39 @@ runKickTrigger(LADSPA_Handle Instance,
   channelCount = *pChannelCount;
   
   for (channel=0;channel<channelCount;++channel) {
+	  pfTriggered = psKickTrigger[1+N_PORTS*channelCount+N_DATA*channel];
+	  pfRemaining = psKickTrigger[1+N_PORTS*channelCount+N_DATA*channel+1];
+	  
+	  pfTriggerLevel = psKickTrigger[1+N_PORTS*channel];
+	  pfTriggerDelay = psKickTrigger[1+N_PORTS*channel+1];
+	  pfClickLevel = psKickTrigger[1+N_PORTS*channel+2];
+	  pfBoostLevel = psKickTrigger[1+N_PORTS*channel+3];
+	  pfDryLevel = psKickTrigger[1+N_PORTS*channel+4];
+	  
 	  pfInput = psKickTrigger[1+N_PORTS*channel+N_PORTS-2];
 	  pfOutput = psKickTrigger[1+N_PORTS*channel+N_PORTS-1];
 	  
-	  for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) 
-		*(pfOutput++) = *(pfInput++);
+	  for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
+		  
+		if (*pfTriggered == 0.f) {
+			smp = *(pfInput++);
+			if (fabsf(smp) > *pfTriggerLevel) {
+				*(pfOutput++) = smp*(*pfBoostLevel);
+				*pfTriggered = 1.f;
+				*pfRemaining = *pfTriggerDelay*1024.f;
+			} else
+				*(pfOutput++) = smp*(*pfDryLevel);
+		} else {
+			*(pfOutput++) = *(pfInput++)*(*pfBoostLevel) + 
+			  noise[lSampleIndex%1024]*(*pfClickLevel);
+			*pfRemaining -= 1.f;
+			if (*pfRemaining <= 0.f) {
+				*pfTriggered = 0.f;
+			}
+		}
+		  
+		
+	  }
   }
 }
 
@@ -263,10 +326,16 @@ fillDescriptor(LADSPA_Descriptor *g_psDescriptor, int channels, int id) {
     {
 	  for (j=0;j<N_PORTS-2;++j)
 	  {
+		  if (j == 1) 
+		  psPortRangeHints[i*N_PORTS+j].HintDescriptor
+			= (LADSPA_HINT_BOUNDED_BELOW 
+				| LADSPA_HINT_DEFAULT_1);
+		  else
 		  psPortRangeHints[i*N_PORTS+j].HintDescriptor
 			= (LADSPA_HINT_BOUNDED_BELOW 
 				| LADSPA_HINT_LOGARITHMIC
 				| LADSPA_HINT_DEFAULT_1);
+		  
 		  psPortRangeHints[i*N_PORTS+j].LowerBound 
 			= 0;
 	  }
@@ -300,8 +369,15 @@ fillDescriptor(LADSPA_Descriptor *g_psDescriptor, int channels, int id) {
    loaded. */
 void 
 _init() {
+	
+  int i;
 
-
+  noise = malloc(sizeof(LADSPA_Data)*1024);
+  
+  for (i=0;i<1024;++i) {
+	  noise[i] = (i%4-2)*0.25f-(i%7-3)*0.5f-(i%3-2)*0.25f;
+  }
+  
 
   g_psMonoDescriptor
     = (LADSPA_Descriptor *)malloc(sizeof(LADSPA_Descriptor));
