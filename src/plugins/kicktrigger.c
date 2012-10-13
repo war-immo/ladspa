@@ -1,12 +1,18 @@
-/* amp.c
-
-   Free software by Richard W.E. Furse. Do with as you will. No
-   warranty.
-
-   This LADSPA plugin provides simple mono and stereo amplifiers.
-
-   This file has poor memory protection. Failures during malloc() will
-   not recover nicely. */
+/* kicktrigger.c, (c) 2012, Immanuel Albrecht
+ * 
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version.
+ * 
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+ * details.
+ * 
+ * You should have received a copy of the GNU General Public License along with
+ * this program. If not, see <http://www.gnu.org/licenses/>. 
+ **/
 
 /*****************************************************************************/
 
@@ -19,128 +25,103 @@
 
 /*****************************************************************************/
 
-/* The port numbers for the plugin: */
+/* The port and data numbers for the plugin: */
 
-#define AMP_CONTROL 0
-#define AMP_INPUT1  1
-#define AMP_OUTPUT1 2
-#define AMP_INPUT2  3
-#define AMP_OUTPUT2 4
+#define N_PORTS 3
+#define N_DATA 0
+
+
 
 /*****************************************************************************/
 
 /* The structure used to hold port connection information and state
-   (actually gain controls require no further state). */
+ */
 
-typedef struct {
-
-  /* Ports:
-     ------ */
-
-  LADSPA_Data * m_pfControlValue;
-  LADSPA_Data * m_pfInputBuffer1;
-  LADSPA_Data * m_pfOutputBuffer1;
-  LADSPA_Data * m_pfInputBuffer2;  /* (Not used for mono) */
-  LADSPA_Data * m_pfOutputBuffer2; /* (Not used for mono) */
-
-} Amplifier;
+typedef LADSPA_Data ** KickTrigger;
 
 /*****************************************************************************/
 
 /* Construct a new plugin instance. */
 LADSPA_Handle 
-instantiateAmplifier(const LADSPA_Descriptor * Descriptor,
+instantiateKickTrigger(const LADSPA_Descriptor * Descriptor,
 		     unsigned long             SampleRate) {
-  return malloc(sizeof(Amplifier));
+		 
+  KickTrigger instance;
+  int channels;
+  int *pChannels;
+  
+  channels = 
+	Descriptor->PortCount/N_PORTS;
+
+  instance 
+    = malloc(sizeof(LADSPA_Data*)*(N_PORTS+N_DATA+1)*channels);
+    
+  pChannels 
+    = malloc(sizeof(int));
+  
+  *instance 
+    = (LADSPA_Data*) pChannels;
+  
+  *pChannels 
+    = channels;
+    
+  return instance;
 }
 
 /*****************************************************************************/
 
 /* Connect a port to a data location. */
 void 
-connectPortToAmplifier(LADSPA_Handle Instance,
+connectPortToKickTrigger(LADSPA_Handle Instance,
 		       unsigned long Port,
 		       LADSPA_Data * DataLocation) {
 
-  Amplifier * psAmplifier;
+  KickTrigger psKickTrigger;
 
-  psAmplifier = (Amplifier *)Instance;
-  switch (Port) {
-  case AMP_CONTROL:
-    psAmplifier->m_pfControlValue = DataLocation;
-    break;
-  case AMP_INPUT1:
-    psAmplifier->m_pfInputBuffer1 = DataLocation;
-    break;
-  case AMP_OUTPUT1:
-    psAmplifier->m_pfOutputBuffer1 = DataLocation;
-    break;
-  case AMP_INPUT2:
-    /* (This should only happen for stereo.) */
-    psAmplifier->m_pfInputBuffer2 = DataLocation;
-    break;
-  case AMP_OUTPUT2:
-    /* (This should only happen for stereo.) */
-    psAmplifier->m_pfOutputBuffer2 = DataLocation;
-    break;
-  }
-}
-
-/*****************************************************************************/
-
-void 
-runMonoAmplifier(LADSPA_Handle Instance,
-		 unsigned long SampleCount) {
+  psKickTrigger = (KickTrigger)Instance;
   
-  LADSPA_Data * pfInput;
-  LADSPA_Data * pfOutput;
-  LADSPA_Data fGain;
-  Amplifier * psAmplifier;
-  unsigned long lSampleIndex;
-
-  psAmplifier = (Amplifier *)Instance;
-
-  pfInput = psAmplifier->m_pfInputBuffer1;
-  pfOutput = psAmplifier->m_pfOutputBuffer1;
-  fGain = *(psAmplifier->m_pfControlValue);
-
-  for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) 
-    *(pfOutput++) = *(pfInput++) * fGain;
+  psKickTrigger[Port+1] = DataLocation;
 }
 
 /*****************************************************************************/
 
 void 
-runStereoAmplifier(LADSPA_Handle Instance,
+runKickTrigger(LADSPA_Handle Instance,
 		   unsigned long SampleCount) {
-  
   LADSPA_Data * pfInput;
   LADSPA_Data * pfOutput;
   LADSPA_Data fGain;
-  Amplifier * psAmplifier;
+  KickTrigger  psKickTrigger;
   unsigned long lSampleIndex;
+  int channel, channelCount;
+  int *pChannelCount;
 
-  psAmplifier = (Amplifier *)Instance;
-
-  fGain = *(psAmplifier->m_pfControlValue);
-
-  pfInput = psAmplifier->m_pfInputBuffer1;
-  pfOutput = psAmplifier->m_pfOutputBuffer1;
-  for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) 
-    *(pfOutput++) = *(pfInput++) * fGain;
-
-  pfInput = psAmplifier->m_pfInputBuffer2;
-  pfOutput = psAmplifier->m_pfOutputBuffer2;
-  for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) 
-    *(pfOutput++) = *(pfInput++) * fGain;
+  psKickTrigger = (KickTrigger)Instance;
+  
+  pChannelCount = (int*) *psKickTrigger;
+  
+  channelCount = *pChannelCount;
+  
+  for (channel=0;channel<channelCount;++channel) {
+	  pfInput = psKickTrigger[1+N_PORTS*channel+N_PORTS-2];
+	  pfOutput = psKickTrigger[1+N_PORTS*channel+N_PORTS-1];
+	  
+	  for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) 
+		*(pfOutput++) = *(pfInput++);
+  }
 }
 
 /*****************************************************************************/
 
 /* Throw away a simple delay line. */
 void 
-cleanupAmplifier(LADSPA_Handle Instance) {
-  free(Instance);
+cleanupKickTrigger(LADSPA_Handle Instance) {
+  KickTrigger kInstance;
+  
+  kInstance = (KickTrigger) Instance;
+  
+  free(*kInstance);
+  free(kInstance);
 }
 
 /*****************************************************************************/
@@ -150,14 +131,141 @@ LADSPA_Descriptor * g_psStereoDescriptor = NULL;
 
 /*****************************************************************************/
 
+void
+fillDescriptor(LADSPA_Descriptor *g_psDescriptor, int channels, int id) {
+  char ** pcPortNames;
+  LADSPA_PortDescriptor * piPortDescriptors;
+  LADSPA_PortRangeHint * psPortRangeHints;
+  
+  char label[1024];
+  char name[1024];
+  char portname[1024];
+  
+  int i,j;
+  
+  strcpy(label, "kicktrigger_x");
+  itoa(channels,label+strlen(label),10);
+  
+  strcpy(name, "Kick Trigger ");
+  itoa(channels,name+strlen(name),10);
+  strcat(name, " Channels");
+  
+  g_psDescriptor->UniqueID
+      = id;
+  g_psDescriptor->Label
+      = strdup(label);
+  g_psDescriptor->Properties
+      = LADSPA_PROPERTY_HARD_RT_CAPABLE;
+  g_psDescriptor->Name 
+      = strdup(name);
+    g_psDescriptor->Maker
+      = strdup("Immanuel Albrecht");
+    g_psDescriptor->Copyright
+      = strdup("(c) 2012, GPLv3");
+      
+    g_psDescriptor->PortCount
+      = N_PORTS*channels;
+      
+    piPortDescriptors
+      = (LADSPA_PortDescriptor *)calloc(N_PORTS*channels, sizeof(LADSPA_PortDescriptor));
+    g_psDescriptor->PortDescriptors
+      = (const LADSPA_PortDescriptor *)piPortDescriptors;
+      
+    for (i=0; i<channels;++i) 
+    {
+	  for (j=0;j<N_PORTS-2;++j)
+	  {
+		piPortDescriptors[i*N_PORTS+j]
+          = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
+	  }
+	  
+      piPortDescriptors[i*N_PORTS+N_PORTS-2]
+         = LADSPA_PORT_INPUT | LADSPA_PORT_AUDIO;
+      piPortDescriptors[i*N_PORTS+N_PORTS-1]
+         = LADSPA_PORT_OUTPUT | LADSPA_PORT_AUDIO;
+	}
+      
+    
+    pcPortNames
+      = (char **)calloc(N_PORTS*channels, sizeof(char *));
+    g_psDescriptor->PortNames 
+      = (const char **)pcPortNames;
+      
+    for (i=0; i<channels;++i) 
+    {
+	  for (j=0;j<N_PORTS-2;++j)
+	  {
+		strcpy(portname,"Control ");
+        itoa(j,portname+strlen(portname),10);
+        strcat(portname," of ");
+        itoa(i,portname+strlen(portname),10);
+        
+		pcPortNames[i*N_PORTS+j]
+          = strdup(portname);
+	  }
+	  
+	  strcpy(portname,"Input ");
+	  itoa(i,portname+strlen(portname),10);
+	  
+	  pcPortNames[i*N_PORTS+N_PORTS-2]
+        = strdup(portname);
+        
+      strcpy(portname,"Output ");
+      itoa(i,portname+strlen(portname),10);
+	  
+      pcPortNames[i*N_PORTS+N_PORTS-1]
+        = strdup(portname);
+	}
+      
+
+    psPortRangeHints = ((LADSPA_PortRangeHint *)
+			calloc(N_PORTS*channels, sizeof(LADSPA_PortRangeHint)));
+    g_psDescriptor->PortRangeHints
+      = (const LADSPA_PortRangeHint *)psPortRangeHints;
+      
+    for (i=0; i<channels;++i) 
+    {
+	  for (j=0;j<N_PORTS-2;++j)
+	  {
+		  psPortRangeHints[i*N_PORTS+j].HintDescriptor
+			= (LADSPA_HINT_BOUNDED_BELOW 
+				| LADSPA_HINT_LOGARITHMIC
+				| LADSPA_HINT_DEFAULT_1);
+		  psPortRangeHints[i*N_PORTS+j].LowerBound 
+			= 0;
+	  }
+	  psPortRangeHints[i*N_PORTS+N_PORTS-2].HintDescriptor
+        = 0;
+      psPortRangeHints[i*N_PORTS+N_PORTS-1].HintDescriptor
+        = 0;
+    }
+      
+    
+    
+    g_psDescriptor->instantiate 
+      = instantiateKickTrigger;
+    g_psDescriptor->connect_port 
+      = connectPortToKickTrigger;
+    g_psDescriptor->activate
+      = NULL;
+    g_psDescriptor->run
+      = runKickTrigger;
+    g_psDescriptor->run_adding
+      = NULL;
+    g_psDescriptor->set_run_adding_gain
+      = NULL;
+    g_psDescriptor->deactivate
+      = NULL;
+    g_psDescriptor->cleanup
+      = cleanupKickTrigger;
+}
+
 /* _init() is called automatically when the plugin library is first
    loaded. */
 void 
 _init() {
 
-  char ** pcPortNames;
-  LADSPA_PortDescriptor * piPortDescriptors;
-  LADSPA_PortRangeHint * psPortRangeHints;
+
 
   g_psMonoDescriptor
     = (LADSPA_Descriptor *)malloc(sizeof(LADSPA_Descriptor));
@@ -165,151 +273,12 @@ _init() {
     = (LADSPA_Descriptor *)malloc(sizeof(LADSPA_Descriptor));
 
   if (g_psMonoDescriptor) {
-  
-    g_psMonoDescriptor->UniqueID
-      = 1048;
-    g_psMonoDescriptor->Label
-      = strdup("amp_mono");
-    g_psMonoDescriptor->Properties
-      = LADSPA_PROPERTY_HARD_RT_CAPABLE;
-    g_psMonoDescriptor->Name 
-      = strdup("Mono Amplifier");
-    g_psMonoDescriptor->Maker
-      = strdup("Richard Furse (LADSPA example plugins)");
-    g_psMonoDescriptor->Copyright
-      = strdup("None");
-    g_psMonoDescriptor->PortCount
-      = 3;
-    piPortDescriptors
-      = (LADSPA_PortDescriptor *)calloc(3, sizeof(LADSPA_PortDescriptor));
-    g_psMonoDescriptor->PortDescriptors
-      = (const LADSPA_PortDescriptor *)piPortDescriptors;
-    piPortDescriptors[AMP_CONTROL]
-      = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
-    piPortDescriptors[AMP_INPUT1]
-      = LADSPA_PORT_INPUT | LADSPA_PORT_AUDIO;
-    piPortDescriptors[AMP_OUTPUT1]
-      = LADSPA_PORT_OUTPUT | LADSPA_PORT_AUDIO;
-    pcPortNames
-      = (char **)calloc(3, sizeof(char *));
-    g_psMonoDescriptor->PortNames 
-      = (const char **)pcPortNames;
-    pcPortNames[AMP_CONTROL]
-      = strdup("Gain");
-    pcPortNames[AMP_INPUT1]
-      = strdup("Input");
-    pcPortNames[AMP_OUTPUT1]
-      = strdup("Output");
-    psPortRangeHints = ((LADSPA_PortRangeHint *)
-			calloc(3, sizeof(LADSPA_PortRangeHint)));
-    g_psMonoDescriptor->PortRangeHints
-      = (const LADSPA_PortRangeHint *)psPortRangeHints;
-    psPortRangeHints[AMP_CONTROL].HintDescriptor
-      = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_LOGARITHMIC
-	 | LADSPA_HINT_DEFAULT_1);
-    psPortRangeHints[AMP_CONTROL].LowerBound 
-      = 0;
-    psPortRangeHints[AMP_INPUT1].HintDescriptor
-      = 0;
-    psPortRangeHints[AMP_OUTPUT1].HintDescriptor
-      = 0;
-    g_psMonoDescriptor->instantiate 
-      = instantiateAmplifier;
-    g_psMonoDescriptor->connect_port 
-      = connectPortToAmplifier;
-    g_psMonoDescriptor->activate
-      = NULL;
-    g_psMonoDescriptor->run
-      = runMonoAmplifier;
-    g_psMonoDescriptor->run_adding
-      = NULL;
-    g_psMonoDescriptor->set_run_adding_gain
-      = NULL;
-    g_psMonoDescriptor->deactivate
-      = NULL;
-    g_psMonoDescriptor->cleanup
-      = cleanupAmplifier;
+     fillDescriptor(g_psMonoDescriptor, 1, 666); // TODO: Change Unique ID to something else
   }
   
   if (g_psStereoDescriptor) {
+	  fillDescriptor(g_psStereoDescriptor, 1, 667); // TODO: Change Unique ID to something else
     
-    g_psStereoDescriptor->UniqueID
-      = 1049;
-    g_psStereoDescriptor->Label
-      = strdup("amp_stereo");
-    g_psStereoDescriptor->Properties
-      = LADSPA_PROPERTY_HARD_RT_CAPABLE;
-    g_psStereoDescriptor->Name 
-      = strdup("Stereo Amplifier");
-    g_psStereoDescriptor->Maker
-      = strdup("Richard Furse (LADSPA example plugins)");
-    g_psStereoDescriptor->Copyright
-      = strdup("None");
-    g_psStereoDescriptor->PortCount
-      = 5;
-    piPortDescriptors
-      = (LADSPA_PortDescriptor *)calloc(5, sizeof(LADSPA_PortDescriptor));
-    g_psStereoDescriptor->PortDescriptors
-      = (const LADSPA_PortDescriptor *)piPortDescriptors;
-    piPortDescriptors[AMP_CONTROL]
-      = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
-    piPortDescriptors[AMP_INPUT1]
-      = LADSPA_PORT_INPUT | LADSPA_PORT_AUDIO;
-    piPortDescriptors[AMP_OUTPUT1]
-      = LADSPA_PORT_OUTPUT | LADSPA_PORT_AUDIO;
-    piPortDescriptors[AMP_INPUT2]
-      = LADSPA_PORT_INPUT | LADSPA_PORT_AUDIO;
-    piPortDescriptors[AMP_OUTPUT2]
-      = LADSPA_PORT_OUTPUT | LADSPA_PORT_AUDIO;
-    pcPortNames
-      = (char **)calloc(5, sizeof(char *));
-    g_psStereoDescriptor->PortNames 
-      = (const char **)pcPortNames;
-    pcPortNames[AMP_CONTROL]
-      = strdup("Gain");
-    pcPortNames[AMP_INPUT1]
-      = strdup("Input (Left)");
-    pcPortNames[AMP_OUTPUT1]
-      = strdup("Output (Left)");
-    pcPortNames[AMP_INPUT2]
-      = strdup("Input (Right)");
-    pcPortNames[AMP_OUTPUT2]
-      = strdup("Output (Right)");
-    psPortRangeHints = ((LADSPA_PortRangeHint *)
-			calloc(5, sizeof(LADSPA_PortRangeHint)));
-    g_psStereoDescriptor->PortRangeHints
-      = (const LADSPA_PortRangeHint *)psPortRangeHints;
-    psPortRangeHints[AMP_CONTROL].HintDescriptor
-      = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_LOGARITHMIC
-	 | LADSPA_HINT_DEFAULT_1);
-    psPortRangeHints[AMP_CONTROL].LowerBound 
-      = 0;
-    psPortRangeHints[AMP_INPUT1].HintDescriptor
-      = 0;
-    psPortRangeHints[AMP_OUTPUT1].HintDescriptor
-      = 0;
-    psPortRangeHints[AMP_INPUT2].HintDescriptor
-      = 0;
-    psPortRangeHints[AMP_OUTPUT2].HintDescriptor
-      = 0;
-    g_psStereoDescriptor->instantiate 
-      = instantiateAmplifier;
-    g_psStereoDescriptor->connect_port 
-      = connectPortToAmplifier;
-    g_psStereoDescriptor->activate
-      = NULL;
-    g_psStereoDescriptor->run
-      = runStereoAmplifier;
-    g_psStereoDescriptor->run_adding
-      = NULL;
-    g_psStereoDescriptor->set_run_adding_gain
-      = NULL;
-    g_psStereoDescriptor->deactivate
-      = NULL;
-    g_psStereoDescriptor->cleanup
-      = cleanupAmplifier;
   }
 }
 
