@@ -18,6 +18,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /*****************************************************************************/
 
@@ -28,7 +29,7 @@
 /* The port and data numbers for the plugin: */
 
 #define N_PORTS 3
-#define N_DATA 0
+#define N_DATA 1
 
 
 
@@ -47,14 +48,16 @@ instantiateKickTrigger(const LADSPA_Descriptor * Descriptor,
 		     unsigned long             SampleRate) {
 		 
   KickTrigger instance;
+  int i;
   int channels;
   int *pChannels;
+  float* data;
   
   channels = 
 	Descriptor->PortCount/N_PORTS;
 
   instance 
-    = malloc(sizeof(LADSPA_Data*)*(N_PORTS+N_DATA+1)*channels);
+    = malloc(sizeof(LADSPA_Data*)*(N_PORTS+N_DATA)*channels+1);
     
   pChannels 
     = malloc(sizeof(int));
@@ -64,6 +67,13 @@ instantiateKickTrigger(const LADSPA_Descriptor * Descriptor,
   
   *pChannels 
     = channels;
+    
+  data = malloc(sizeof(float)*channels*N_DATA);
+    
+  for (i=N_PORTS*channels+1;i<N_PORTS*channels+1+N_DATA*channels;i++) {
+	 instance[i] = data;
+	 ++data;
+  }
     
   return instance;
 }
@@ -86,11 +96,34 @@ connectPortToKickTrigger(LADSPA_Handle Instance,
 /*****************************************************************************/
 
 void 
+activateKickTrigger(LADSPA_Handle Instance) {
+  KickTrigger  psKickTrigger;
+  int channel, channelCount, i;
+  int *pChannelCount;
+  
+  psKickTrigger = (KickTrigger)Instance;
+  
+  pChannelCount = (int*) *psKickTrigger;
+  
+  channelCount = *pChannelCount;
+  
+  for (channel=0;channel<channelCount;++channel) {
+	  for (i = 0;i<N_DATA;++i) {
+	    *(psKickTrigger[channelCount*N_PORTS+1+N_DATA*channel +i])
+	      = 0.f;
+	  }
+  }
+}
+
+
+/*****************************************************************************/
+
+void 
 runKickTrigger(LADSPA_Handle Instance,
 		   unsigned long SampleCount) {
   LADSPA_Data * pfInput;
   LADSPA_Data * pfOutput;
-  LADSPA_Data fGain;
+
   KickTrigger  psKickTrigger;
   unsigned long lSampleIndex;
   int channel, channelCount;
@@ -117,10 +150,13 @@ runKickTrigger(LADSPA_Handle Instance,
 void 
 cleanupKickTrigger(LADSPA_Handle Instance) {
   KickTrigger kInstance;
+  int* pChannels;
   
   kInstance = (KickTrigger) Instance;
+  pChannels = (int*) *kInstance;
   
   free(*kInstance);
+  free(kInstance[*pChannels*N_PORTS+1]);
   free(kInstance);
 }
 
@@ -144,10 +180,10 @@ fillDescriptor(LADSPA_Descriptor *g_psDescriptor, int channels, int id) {
   int i,j;
   
   strcpy(label, "kicktrigger_x");
-  itoa(channels,label+strlen(label),10);
+  sprintf(label+strlen(label),"%d",channels);
   
   strcpy(name, "Kick Trigger ");
-  itoa(channels,name+strlen(name),10);
+  sprintf(name+strlen(name),"%d",channels);
   strcat(name, " Channels");
   
   g_psDescriptor->UniqueID
@@ -196,22 +232,22 @@ fillDescriptor(LADSPA_Descriptor *g_psDescriptor, int channels, int id) {
 	  for (j=0;j<N_PORTS-2;++j)
 	  {
 		strcpy(portname,"Control ");
-        itoa(j,portname+strlen(portname),10);
+		sprintf(portname+strlen(portname),"%d",j);
         strcat(portname," of ");
-        itoa(i,portname+strlen(portname),10);
+        sprintf(portname+strlen(portname),"%d",i);
         
 		pcPortNames[i*N_PORTS+j]
           = strdup(portname);
 	  }
 	  
 	  strcpy(portname,"Input ");
-	  itoa(i,portname+strlen(portname),10);
+	  sprintf(portname+strlen(portname),"%d",i);
 	  
 	  pcPortNames[i*N_PORTS+N_PORTS-2]
         = strdup(portname);
         
       strcpy(portname,"Output ");
-      itoa(i,portname+strlen(portname),10);
+      sprintf(portname+strlen(portname),"%d",i);
 	  
       pcPortNames[i*N_PORTS+N_PORTS-1]
         = strdup(portname);
@@ -247,7 +283,7 @@ fillDescriptor(LADSPA_Descriptor *g_psDescriptor, int channels, int id) {
     g_psDescriptor->connect_port 
       = connectPortToKickTrigger;
     g_psDescriptor->activate
-      = NULL;
+      = activateKickTrigger;
     g_psDescriptor->run
       = runKickTrigger;
     g_psDescriptor->run_adding
@@ -273,11 +309,11 @@ _init() {
     = (LADSPA_Descriptor *)malloc(sizeof(LADSPA_Descriptor));
 
   if (g_psMonoDescriptor) {
-     fillDescriptor(g_psMonoDescriptor, 1, 666); // TODO: Change Unique ID to something else
+     fillDescriptor(g_psMonoDescriptor, 1, 1668666); // TODO: Change Unique ID to something else
   }
   
   if (g_psStereoDescriptor) {
-	  fillDescriptor(g_psStereoDescriptor, 1, 667); // TODO: Change Unique ID to something else
+	  fillDescriptor(g_psStereoDescriptor, 2, 1668667); // TODO: Change Unique ID to something else
     
   }
 }

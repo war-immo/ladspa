@@ -17,11 +17,7 @@ INCLUDES	=	-I.
 LIBRARIES	=	-ldl -lm
 CFLAGS		=	$(INCLUDES) -Wall -Werror -O3 -fPIC
 CXXFLAGS	=	$(CFLAGS)
-PLUGINS		=	../plugins/amp.so				\
-			../plugins/delay.so				\
-			../plugins/filter.so				\
-			../plugins/noise.so				\
-			../plugins/sine.so				
+PLUGINS		=	../plugins/kicktrigger.so				
 PROGRAMS	=	../bin/analyseplugin				\
 			../bin/applyplugin 				\
 			../bin/listplugins
@@ -68,19 +64,8 @@ install:	targets
 
 /tmp/test.wav:	targets ../snd/noise.wav
 	../bin/listplugins
-	../bin/analyseplugin ../plugins/filter.so
-	../bin/analyseplugin ../plugins/delay.so
-	../bin/analyseplugin ../plugins/sine.so
-	echo ; ../bin/analyseplugin -l ../plugins/sine.so ; echo
-	../bin/analyseplugin ../plugins/amp.so
-	../bin/analyseplugin ../plugins/noise.so
-	../bin/applyplugin	-s 1					\
-				../snd/noise.wav /tmp/test.wav		\
-				../plugins/filter.so lpf 500		\
-				../plugins/filter.so lpf 500		\
-				../plugins/sine.so sine_fcaa 6000	\
-				../plugins/delay.so delay_5s 1 0.1	\
-				../plugins/amp.so amp_mono 4		\
+	../bin/analyseplugin ../plugins/kicktrigger.so
+	
 
 targets:	$(PLUGINS) $(PROGRAMS)
 
