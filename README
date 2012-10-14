@@ -1,12 +1,12 @@
-LADSPA SDK
-----------
+TO BUILD, do
 
-The API itself can be be found in src/ladspa.h. The rest of this
-package is a software development kit to make the API even easier to
-work with.
+ cd src; make
 
-See http://www.ladspa.org for news and updates to the API and SDK. See
-http://www.ladspa.org/cmt for a basic plugin library. The latter is
-GPL'd and contains `full' versions of all the plugins contained in the
-example libraries.
+this will make the following LADSPA-plugins:
+
+ plugins/kicktrigger.so
+           Kick drum trigger that can be used with pre-recorded base drum
+           (or whatever you like) tracks for instance in ardour, or in real-time
+           mode in order to turn a laptop with jack-rack into a kick drum
+           trigger module.
 
