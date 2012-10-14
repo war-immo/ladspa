@@ -408,6 +408,8 @@ void runKickTrigger(LADSPA_Handle Instance, unsigned long SampleCount) {
 				*pClickFrame += 1.f;
 			}
 
+			/* sythesizer code */
+
 			if (*pl0 > 0.f) {
 				*pfOutput += (*palpha0 * *pl0 + *pbeta0)
 						* sinf((*ppsi0 * *pl0 + *pphi0) * *pl0 + *pomega0);
